@@ -7,6 +7,13 @@
 #include "freertos/semphr.h"
 #include "ShubhSensor.h"
 #include "config.h"
+#if ENABLE_MATTER
+// espHsvColor_t/espRgbColor_t live in the core's ColorFormat.h. Make them visible
+// globally here so Arduino's auto-generated prototype for Matter.ino's onChange
+// callback — which gets hoisted to the top of the first tab, before <Matter.h> —
+// still sees the type and compiles. (Multi-tab sketch gotcha; see Matter.ino.)
+#include <ColorFormat.h>
+#endif
 
 // All telemetry: C1001 (radar) + DHT11
 struct SensorData {
@@ -93,6 +100,9 @@ void   lightApply();          // Light.ino
 void   lightAuto();           // Light.ino
 void   lightSunrise(float p); // Light.ino
 void   lightBootTest();       // Light.ino
+void   lightHeartbeatCheck(); // Light.ino — arm the HR-lock red pulse (called at the 1 Hz tick)
+bool   lightHeartbeatActive();// Light.ino — true while the pulse owns the ring
+void   lightHeartbeatStep();  // Light.ino — animate the pulse (called every loop)
 void   timeBegin();           // Alarm.ino
 bool   alarmCheck();          // Alarm.ino
 void   touchBegin();          // Touch.ino  (TTP223 init)
@@ -107,6 +117,8 @@ void   sleepFeed(const SensorData& s, SleepLive& outLive,
                  NightReport& outRep, bool& repReady);  // Sleep.ino
 void   handleData();          // Api.ino    (live JSON snapshot)
 void   handleSession();       // Api.ino    (tonight's stage timeline)
+void   handleSessionHist();   // Store.ino  (a saved night's stage timeline, by ?t=stamp)
+void   sessionSaveTimeline(const char* stamp);  // Store.ino — persist tonight's hypnogram on save
 void   handleLight();         // Control.ino
 void   handleAlarm();         // Control.ino
 void   handleReport();        // Control.ino (/api/report?end=1 -> end session now)

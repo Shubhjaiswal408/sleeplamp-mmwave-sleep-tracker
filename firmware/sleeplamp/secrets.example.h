@@ -10,5 +10,5 @@
 // http://192.168.4.1/wifi to enter your network. It's saved on the device.
 #pragma once
 
-#define WIFI_SSID  "YOUR_WIFI_NAME"
-#define WIFI_PASS  "YOUR_WIFI_PASSWORD"
+#define WIFI_SSID  "SmS"
+#define WIFI_PASS   ""

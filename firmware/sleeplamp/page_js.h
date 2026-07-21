@@ -15,7 +15,7 @@ function fmtUp(s){let h=s/3600|0,m=(s%3600)/60|0;return (h?h+'h ':'')+m+'m';}
 const disp={};
 function smooth(id,v){
  if(!v){$(id).textContent='0';delete disp[id];return;}
- let c=disp[id];if(c==null||Math.abs(c-v)>40)c=v;else c+= (v-c)*0.35;
+ let c=disp[id];if(c==null||Math.abs(c-v)>25)c=v;else c+= (v-c)*0.6;
  disp[id]=c;$(id).textContent=Math.round(c);
 }
 
@@ -155,8 +155,36 @@ async function delSession(ev,i){ev.stopPropagation();
 // history buffers — hypnogram (stg) comes from the DEVICE session recorder
 const VMAX=300;let hrA=[],brA=[],stg=[];
 function pushV(h,b){hrA.push(h>0?h:null);brA.push(b>0?b:null);if(hrA.length>VMAX){hrA.shift();brA.shift();}}
-async function loadSession(){try{const s=await(await fetch('/api/session')).json();
- if(s&&s.stage){stg=s.stage;drawHyp();}}catch(e){}}
+// hypnogram navigation: hypView -1 = tonight (live); else index into histCache
+// (oldest-first). hypAnchor = end-stamp of the viewed past night (null = live=now).
+let hypView=-1,hypAnchor=null;
+async function loadSession(){
+ if(hypView!==-1)return;                          // viewing a past night -> keep it
+ try{const s=await(await fetch('/api/session')).json();
+  if(s&&s.stage){stg=s.stage;hypAnchor=null;drawHyp();}}catch(e){}}
+async function loadHypView(){
+ if(hypView===-1){$('hypLabel').textContent='Tonight';$('hypDate').value='';hypAnchor=null;return loadSession();}
+ const r=histCache[hypView];
+ if(!r){hypView=-1;return loadHypView();}
+ $('hypLabel').textContent=(/^\d{4}-/.test(r.t)?fmtDate(r.t):'Saved night');
+ if(/^\d{4}-/.test(r.t))$('hypDate').value=r.t.slice(0,10);
+ try{const s=await(await fetch('/api/sessionhist?t='+encodeURIComponent(r.t))).json();
+  stg=(s&&s.stage)?s.stage:[];hypAnchor=r.t;drawHyp();}
+ catch(e){stg=[];hypAnchor=r.t;drawHyp();}}
+// calendar: jump straight to the latest saved session on the picked date
+function hypGoToDate(){
+ const d=$('hypDate').value;if(!d)return;
+ let idx=-1;for(let i=0;i<histCache.length;i++)if(String(histCache[i].t).startsWith(d))idx=i;
+ if(idx>=0){hypView=idx;loadHypView();}else toast('No saved session on '+fmtDate(d+' '));
+}
+function hypOlder(){const n=histCache.length;
+ if(hypView===-1){if(n>0)hypView=n-1;}            // tonight -> newest saved
+ else if(hypView>0)hypView--;                      // -> older
+ loadHypView();}
+function hypNewer(){
+ if(hypView===-1)return;                            // already tonight
+ hypView++;if(hypView>=histCache.length)hypView=-1; // past newest saved -> tonight
+ loadHypView();}
 
 // canvases
 function prep(c){const dpr=devicePixelRatio||1,w=c.clientWidth,h=c.clientHeight;c.width=w*dpr;c.height=h*dpr;
@@ -207,17 +235,21 @@ function hypHit(ev){
  const cx=(ev.touches&&ev.touches.length?ev.touches[0].clientX:ev.clientX)-r.left;
  const hit=hypRuns.find(R=>cx>=R.xa-3&&cx<=R.xb+3);
  if(!hit){hypDefault();return;}
- // ring holds 1 sample/min and the newest sample is "now"
- const tAt=i=>new Date(Date.now()-(hypN-1-i)*60000);
+ // 1 sample/min; newest sample = session end (now for tonight, else its end stamp)
+ const anchor=hypAnchor?new Date(hypAnchor.replace(' ','T')).getTime():Date.now();
+ const tAt=i=>new Date(anchor-(hypN-1-i)*60000);
  const f=t=>p2(t.getHours())+':'+p2(t.getMinutes());
- const t0=tAt(hit.a),t1=new Date(Math.min(Date.now(),tAt(hit.b).getTime()+60000));
+ const t0=tAt(hit.a),t1=new Date(Math.min(anchor,tAt(hit.b).getTime()+60000));
  $('hypInfo').innerHTML=chipOf(SCOL[hit.s],
   SNAME[hit.s]+' <b>'+f(t0)+' &ndash; '+f(t1)+'</b> &middot; lasted <b>'+fmtM(hit.b-hit.a+1)+'</b>');
 }
 (function(){const c=$('hyp');
  c.addEventListener('mousemove',hypHit);c.addEventListener('click',hypHit);
  c.addEventListener('touchstart',hypHit,{passive:true});
- c.addEventListener('mouseleave',hypDefault);hypDefault();})();
+ c.addEventListener('mouseleave',hypDefault);hypDefault();
+ $('hypPrev').onclick=hypOlder;$('hypNext').onclick=hypNewer;
+ $('hypDate').onchange=hypGoToDate;$('hypDate').max=new Date().toISOString().slice(0,10);
+ $('hypCal').onclick=function(){try{$('hypDate').showPicker()}catch(e){$('hypDate').focus();$('hypDate').click();}};})();
 function line(x,a,x0,xw,h,pad,lo,hi,col){x.strokeStyle=col;x.lineWidth=2;x.lineJoin='round';
  x.shadowColor=col;x.shadowBlur=9;x.beginPath();let st=false;
  for(let i=0;i<a.length;i++){const v=a[i];if(v==null){st=false;continue;}

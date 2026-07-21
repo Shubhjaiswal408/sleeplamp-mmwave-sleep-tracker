@@ -29,6 +29,17 @@ static String field(const String& line, int idx) {
 }
 static String num(const String& line, int idx) { String v = field(line, idx); return v.length() ? v : "0"; }
 
+// per-session hypnogram timeline file, keyed by the session's "when" stamp
+// e.g. "2026-06-20 22:30" -> "/h_2026-06-20_2230.dat"
+static String timelinePath(const String& stamp) {
+  String p;
+  for (size_t i = 0; i < stamp.length(); i++) {
+    char c = stamp[i];
+    if (c == ' ') p += '_'; else if (c == ':') continue; else p += c;
+  }
+  return "/h_" + p + ".dat";
+}
+
 static int histCount() {
   File f = LittleFS.open("/history.csv", FILE_READ);
   if (!f) return 0;
@@ -64,6 +75,16 @@ void storeBegin() {
   reportLoadLast();   // dashboard shows the last saved night right after boot
 }
 
+// Persist tonight's per-minute stage timeline so the dashboard can redraw THIS
+// night's hypnogram later (the ◀ ▶ arrow navigation). Called by reportSave from
+// sensorTask — the only writer of sessBuf — so reading it unlocked here is safe.
+void sessionSaveTimeline(const char* stamp) {
+  File f = LittleFS.open(timelinePath(String(stamp)), FILE_WRITE);
+  if (!f) { Serial.println(F("[FS] timeline open failed")); return; }
+  for (int i = 0; i < sessN; i++) f.write(sessBuf[(sessStart + i) % SESS_MAX].stage);
+  f.close();
+}
+
 // CSV columns: datetime, score, sleepMin, deep%, light%, awakeMin,
 //              avgHR, avgBR, turnovers, apnea, onsetMin, awakenings, bedMin
 void reportSave(NightReport& r) {
@@ -77,7 +98,13 @@ void reportSave(NightReport& r) {
            st.c_str(), r.score, r.sleepMin, deepPct, lightPct, r.awakeMin,
            r.avgHR, r.avgBR, r.turns, r.apnea, r.onsetMin, r.wakes, r.bedMin);
   f.close();
-  if (histCount() > HIST_MAX) histDropRow(0);   // cap: drop the oldest
+  sessionSaveTimeline(st.c_str());              // persist this night's hypnogram timeline
+  if (histCount() > HIST_MAX) {
+    File of = LittleFS.open("/history.csv", FILE_READ);   // oldest row -> drop its timeline too
+    if (of) { String first = of.readStringUntil('\n'); first.trim(); of.close();
+      if (first.length()) LittleFS.remove(timelinePath(field(first, 0))); }
+    histDropRow(0);                             // cap: drop the oldest
+  }
   Serial.printf("[FS] session saved: score=%d sleep=%d min (in bed %d) -- %d/%d sessions stored\n",
                 r.score, r.sleepMin, r.bedMin, histCount(), HIST_MAX);
 }
@@ -129,6 +156,23 @@ void handleExport() {
 void handleHistory() {
   if (server.hasArg("clear")) {
     LittleFS.remove("/history.csv");
+    // remove every per-session timeline file too ("/h_*.dat")
+    String victims;
+    File root = LittleFS.open("/");
+    if (root) {
+      for (File ff = root.openNextFile(); ff; ff = root.openNextFile()) {
+        String nm = ff.name();
+        if (nm.indexOf("h_") >= 0 && nm.endsWith(".dat")) {
+          if (!nm.startsWith("/")) nm = "/" + nm;
+          victims += nm; victims += '\n';
+        }
+      }
+      root.close();
+    }
+    for (int p = 0; p < (int)victims.length();) {
+      int e = victims.indexOf('\n', p); if (e < 0) break;
+      LittleFS.remove(victims.substring(p, e)); p = e + 1;
+    }
     xSemaphoreTake(mux, portMAX_DELAY);
     lastReport = NightReport();
     xSemaphoreGive(mux);
@@ -143,20 +187,21 @@ void handleHistory() {
   if (server.hasArg("del")) {
     int    idx  = server.arg("del").toInt();
     String want = server.hasArg("t") ? server.arg("t") : "";
-    int target = -1, i = 0;
+    int target = -1, i = 0; String delStamp;
     File f = LittleFS.open("/history.csv", FILE_READ);
     if (f) {
       while (f.available()) {
         String line = f.readStringUntil('\n'); line.trim();
         if (!line.length()) continue;
         bool stampOk = !want.length() || field(line, 0) == want;
-        if (i == idx && stampOk) { target = i; break; }
-        if (target < 0 && stampOk && want.length()) target = i;   // fallback
+        if (i == idx && stampOk) { target = i; delStamp = field(line, 0); break; }
+        if (target < 0 && stampOk && want.length()) { target = i; delStamp = field(line, 0); }  // fallback
         i++;
       }
       f.close();
     }
     if (target >= 0) {
+      if (delStamp.length()) LittleFS.remove(timelinePath(delStamp));   // drop its timeline too
       histDropRow(target);
       xSemaphoreTake(mux, portMAX_DELAY);
       lastReport = NightReport();     // newest row may be the one we removed
@@ -186,6 +231,26 @@ void handleHistory() {
     f.close();
   }
   out += "]";
+  server.sendHeader("Cache-Control","no-store");
+  server.send(200, "application/json", out);
+}
+
+// /api/sessionhist?t=STAMP -> one saved night's per-minute stage timeline, so the
+// hypnogram can redraw past nights (the ◀ ▶ arrows). Stage-only; the client
+// reconstructs clock times from the session's end stamp.
+void handleSessionHist() {
+  String t = server.hasArg("t") ? server.arg("t") : "";
+  String out; out.reserve(2600);
+  out = "{\"when\":\"" + t + "\",\"stage\":[";
+  int n = 0;
+  if (t.length()) {
+    File f = LittleFS.open(timelinePath(t), FILE_READ);
+    if (f) {
+      while (f.available()) { if (n) out += ','; out += (int)f.read(); n++; }
+      f.close();
+    }
+  }
+  out += "],\"n\":" + String(n) + "}";
   server.sendHeader("Cache-Control","no-store");
   server.send(200, "application/json", out);
 }

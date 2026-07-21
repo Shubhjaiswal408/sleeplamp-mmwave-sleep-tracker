@@ -16,6 +16,11 @@ void settingsBegin() {
   alarmCfg.minute  = prefs.getInt ("am",   alarmCfg.minute);
   alarmCfg.window  = prefs.getInt ("awin", alarmCfg.window);
   prefs.end();
+  // guard: a corrupted / near-black saved manual colour shows as "on" but emits no
+  // light (we hit exactly this when a Matter round-trip once saved rgb(3,1,0) at 1%).
+  if (light.mode == 1 && (max(max(light.r, light.g), light.b) < 8 || light.bright < 5)) {
+    light.r = 255; light.g = 150; light.b = 60; light.bright = 60;
+  }
   Serial.println(F("[NVS] settings restored"));
 }
 

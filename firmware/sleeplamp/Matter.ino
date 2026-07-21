@@ -22,9 +22,12 @@
 
 static MatterColorLight matterLight;
 static bool matterReady = false;
+static bool matterSelfWrite = false;   // true while WE push to the hub -> ignore the echoed callback
 
 // hub -> lamp : a smart-home app changed our light
 static bool onMatterChange(bool state, espHsvColor_t hsv) {
+  if (matterSelfWrite) return true;    // our own reflected write — NOT a hub command. Ignoring
+                                       // this is what stops the lamp-corrupting feedback loop.
   espRgbColor_t rgb = espHsvColorToRgbColor(hsv);
   xSemaphoreTake(mux, portMAX_DELAY);
   if (!state) {
@@ -83,8 +86,10 @@ void matterReflect(int r, int g, int b) {
   if (r == lr && g == lg && b == lb) return;  // dedupe — no spam to the fabric
   lr = r; lg = g; lb = b;
   bool on = (r | g | b) != 0;
+  matterSelfWrite = true;            // suppress the echoed onMatterChange these writes trigger
   matterLight.setOnOff(on);
   if (on) { espRgbColor_t c = {(uint8_t)r, (uint8_t)g, (uint8_t)b}; matterLight.setColorRGB(c); }
+  matterSelfWrite = false;
 }
 
 #else   // ----- Matter disabled: no-op stubs so the rest of the code is unchanged -----

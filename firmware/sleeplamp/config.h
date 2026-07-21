@@ -18,21 +18,22 @@
 #define MDNS_HOST  "sleeplamp"     // -> http://sleeplamp.local
 
 // ---------------- C1001 radar (UART) ----------------
-#define RADAR_RX   18              // ESP32-S3 RX <- C1001 TX
-#define RADAR_TX   17              // ESP32-S3 TX -> C1001 RX
+#define RADAR_RX   17              // ESP32-S3 RX <- C1001 TX (this board wired swapped vs dev board)
+#define RADAR_TX   18              // ESP32-S3 TX -> C1001 RX
 
 // ---------------- DHT11 (temp/humidity) ----------------
 #define USE_DHT    1
-#define DHT_PIN    4               // DATA (VCC=3V3, GND=GND)
+#define DHT_PIN    3               // DATA (VCC=3V3, GND=GND). NOTE: IO3 is a strapping pin —
+                                   // keep the DHT11 DATA pull-up so it idles HIGH at boot.
 
 // ---------------- TTP223 capacitive touch button ----------------
 // Module: VCC->3V3, GND->GND, OUT/SIG->TOUCH_PIN. Default TTP223 mode is
 // momentary + active-HIGH (OUT goes high while touched) — that's what we expect.
 // Tap = toggle lamp on/off; a tap while the alarm rings dismisses it.
 #define USE_TOUCH       1
-#define TOUCH_PIN       6          // TTP223 OUT
+#define TOUCH_PIN       16         // TTP223 OUT
 #define TOUCH_ACTIVE_HIGH 1        // 1 = OUT high on touch (TTP223 default); 0 = active low
-#define TOUCH_DEBOUNCE_MS 250      // ignore re-triggers within this window
+#define TOUCH_DEBOUNCE_MS 250      // min gap between taps (stops one tap counting twice)
 
 // ---------------- RGB lamp: NeoPixel ring (WS2812 / SK6812) ----------------
 // Round 12-LED addressable ring. ONE data wire. Library: Adafruit NeoPixel
@@ -40,9 +41,17 @@
 // Power the ring's 5V + GND from the EXTERNAL 5V supply (12 px ~= up to 0.7 A at
 // full white) — never from the ESP's 3V3. DIN goes to NEOPIXEL_PIN.
 #define USE_RGB         1
-#define NEOPIXEL_PIN    5          // ring DIN  (change if you wired another GPIO)
+#define NEOPIXEL_PIN    15         // ring DIN  (change if you wired another GPIO)
 #define NEOPIXEL_COUNT  12         // pixels on the ring
 #define RGB_BOOT_TEST   1          // sweep R->G->B at boot to verify wiring/colour order
+
+// ---------------- heart-rate lock visual ----------------
+// When the radar first locks onto a heart rate, pulse the ring RED at the
+// measured BPM for HR_PULSE_SEC seconds — a quick visual "HR detected!" cue so
+// you can confirm a lock without watching serial/dashboard. Skipped while you're
+// actually asleep (deep/light) so it never flashes mid-sleep. Set 0 to disable.
+#define USE_HR_PULSE    1
+#define HR_PULSE_SEC    10
 
 // ---------------- Time / smart-wake alarm ----------------
 #define TZ_OFFSET_SEC   19800      // India = GMT+5:30
@@ -75,9 +84,10 @@
 // wipes saved history + WiFi, so set WiFi again afterwards). The lamp joins
 // Apple Home / Google / Alexa as a Matter Color Light; scan the QR printed to
 // the serial monitor at boot to pair. Set to 0 to build without Matter.
-#define ENABLE_MATTER   1
+#define ENABLE_MATTER   0
 
 // ---------------- misc ----------------
 #define FW_VERSION      "1.2"
 #define POLL_DELAY_MS   120
 #define SERIAL_PRINT_MS 2000
+#define VERBOSE_SERIAL  1   // 1 = print the deep DETAIL/COMPOSITE/NIGHTLY radar dump; 0 = quieter log

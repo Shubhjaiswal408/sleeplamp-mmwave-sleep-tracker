@@ -60,6 +60,24 @@ static void printTelemetry() {
   Serial.printf("ENV temp:%d C  humidity:%d %%  (valid:%d)\n", d.tempC, d.humidity, d.envValid);
   Serial.printf("LIGHT mode:%d rgb(%d,%d,%d) bright:%d%%   ALARM %02d:%02d en:%d firing:%d   heap:%lu\n",
                 L.mode, L.r, L.g, L.b, L.bright, A.hour, A.minute, A.enabled, A.firing, (unsigned long)ESP.getFreeHeap());
+  // ---- full radar field dump — gated by VERBOSE_SERIAL so the log can be quieted ----
+#if VERBOSE_SERIAL
+  Serial.printf("DETAIL  distance:%d cm  quality:%d  disturb:%d  rating:%d  abnormal:%d  breathState:%d  seq:%lu\n",
+                d.distance, d.quality, d.disturbance, d.rating, d.abnormal, d.breathState, (unsigned long)d.seq);
+  Serial.printf("COMPOSITE  avgResp:%d  avgHeart:%d  turns:%d  largeMove:%d%%  minorMove:%d%%  apnea:%d\n",
+                d.cResp, d.cHeart, d.cTurn, d.cLarge, d.cMinor, d.cApnea);
+  Serial.printf("NIGHTLY  score:%d  sleepT:%dm  wake:%d  shallow:%d%%  deep:%d%%  oob:%d  exits:%d  turns:%d  resp:%d  heart:%d  apnea:%d\n",
+                d.sScore, d.sSleepTime, d.sWake, d.sShallow, d.sDeep, d.sOOB, d.sExit, d.sTurn, d.sResp, d.sHeart, d.sApnea);
+#endif
+  Serial.printf("NET  mode:%s  rssi:%d dBm  ip:%s  fw:%s  uptime:%lus\n",
+                (WiFi.getMode() & WIFI_MODE_AP) ? "AP" : "STA", (int)WiFi.RSSI(),
+                ((WiFi.getMode() & WIFI_MODE_AP) ? WiFi.softAPIP() : WiFi.localIP()).toString().c_str(),
+                FW_VERSION, (unsigned long)(millis() / 1000));
+#if USE_TOUCH
+  int tv = digitalRead(TOUCH_PIN);
+  Serial.printf("TOUCH  GPIO%d raw:%d -> %s   (tap the pad: it should flip to touched)\n",
+                TOUCH_PIN, tv, (tv == (TOUCH_ACTIVE_HIGH ? HIGH : LOW)) ? "TOUCHED" : "idle");
+#endif
 }
 
 void setup() {
@@ -107,6 +125,7 @@ void setup() {
   server.on("/api/alarm",   handleAlarm);
   server.on("/api/history", handleHistory);
   server.on("/api/session", handleSession);
+  server.on("/api/sessionhist", handleSessionHist);
   server.on("/api/report",  handleReport);
   server.on("/api/export",  handleExport);
   server.on("/api/sensor",  handleSensor);
@@ -137,8 +156,17 @@ void loop() {
     g_lightDirty = false; lightApply(); settingsSaveLight();
   }
   static uint32_t tTick = 0, tPrint = 0, tWifi = 0;
+  static bool alarmFiring = false;
   uint32_t now = millis();
-  if (now - tTick > 1000) { tTick = now; if (!alarmCheck()) { lightAuto(); lightApply(); } }
+  if (now - tTick > 1000) {
+    tTick = now;
+    alarmFiring = alarmCheck();
+    if (!alarmFiring) {
+      lightHeartbeatCheck();                                  // arm the red pulse on a fresh HR lock
+      if (!lightHeartbeatActive()) { lightAuto(); lightApply(); }
+    }
+  }
+  if (!alarmFiring) lightHeartbeatStep();                     // smooth red beat between ticks
   // (history writes happen inside the engine at session end — no polling store)
   if (now - tPrint > SERIAL_PRINT_MS) { tPrint = now; printTelemetry(); }
   if (now - tWifi > 10000) {                      // auto-recover dropped WiFi

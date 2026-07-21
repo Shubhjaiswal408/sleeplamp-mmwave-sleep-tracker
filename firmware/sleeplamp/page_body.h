@@ -49,9 +49,21 @@ const char PAGE_BODY[] PROGMEM = R"SLBODY(</style></head><body>
 
 <!-- HYPNOGRAM -->
 <div class="sec">Sleep Stages</div>
-<div class="card"><canvas id="hyp" style="cursor:crosshair"></canvas>
+<div class="card">
+  <div class="flex" style="justify-content:center;gap:12px;margin-bottom:6px;flex-wrap:wrap">
+    <button id="hypPrev" class="setupBtn ghostBtn" style="padding:4px 13px;font-size:16px;line-height:1">&#9664;</button>
+    <span id="hypLabel" style="min-width:120px;text-align:center;font-weight:600">Tonight</span>
+    <button id="hypNext" class="setupBtn ghostBtn" style="padding:4px 13px;font-size:16px;line-height:1">&#9654;</button>
+    <span style="position:relative;display:inline-flex">
+      <button id="hypCal" class="setupBtn ghostBtn" title="Pick a date" style="padding:5px 11px;line-height:1;display:inline-flex;align-items:center">
+        <svg width="15" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/></svg>
+      </button>
+      <input type="date" id="hypDate" style="position:absolute;inset:0;opacity:0;pointer-events:none;width:100%">
+    </span>
+  </div>
+  <canvas id="hyp" style="cursor:crosshair"></canvas>
   <div class="chips" id="hypInfo"></div>
-  <div class="note">One bar per stage stretch &mdash; hover or tap a bar to see when it started, when it ended and how long it lasted.</div></div>
+  <div class="note">&#9664; / &#9654; to browse previous nights &middot; tap a bar to see that stage&rsquo;s start, end and duration.</div></div>
 
 <!-- TONIGHT — live session from the on-device staging engine -->
 <div class="sec">Tonight <span id="tonightSub">&middot; waiting for bed</span></div>
