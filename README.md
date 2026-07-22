@@ -28,6 +28,7 @@
 - [Using the dashboard](#using-the-dashboard)
 - [HTTP API reference](#http-api-reference)
 - [Project structure](#project-structure)
+- [Build log](#build-log--things-that-bit-me) — *the war stories*
 - [Roadmap](#roadmap)
 - [Credits & license](#credits--license)
 
@@ -84,10 +85,11 @@ two dots literally **pulse at your measured rate** — the heart dot beats at yo
 breath dot at your rpm.
 
 ### 📊 Interactive hypnogram
-A clean Awake/Light/Deep timeline of the current night. **Hover or tap any bar** and it
-tells you exactly when that stage started, when it ended, and how long it lasted
-(e.g. *"Deep sleep · 02:14 – 02:46 · lasted 32m"*). Below it, chips show your per-stage
-totals at a glance.
+A clean Awake/Light/Deep timeline. **Hover or tap any bar** and it tells you exactly when
+that stage started, when it ended, and how long it lasted (e.g. *"Deep sleep · 02:14 – 02:46
+· lasted 32m"*). Flip back through earlier nights with the **◀ ▶ arrows**, or hit the little
+**calendar icon** and jump straight to any date you've slept and recorded. Chips underneath
+keep the per-stage totals in view.
 
 ### 📝 Night report + smart insight
 When a session ends, SleepLamp builds a full report: total sleep, efficiency, deep/light
@@ -102,26 +104,41 @@ has a colored score badge, a *Today/Yesterday* tag, a one-line summary, and a
 deep/light/awake composition bar. **Tap to expand for full detail and a per-session
 delete button.** Download everything as CSV, or clear all.
 
-### 💡 Adaptive circadian lamp (12-LED NeoPixel ring)
-The ring reacts to your sleep state automatically: **warm** while you're up, **dim amber**
-when you're in bed but awake, **off** once you're asleep, and a low amber **night-light**
-if you get up mid-sleep (a 3 a.m. bathroom trip). Or take manual control with color presets
-and a brightness slider.
+### 💡 Status-colour lamp (12-LED NeoPixel ring)
+In Auto mode the ring quietly tells you what the radar sees:
 
-### 👆 Tap to control (TTP223 touch)
-A capacitive touch pad on the lamp: **tap to toggle** the light on/off, and **tap to
-dismiss** the sunrise alarm while it's ringing — no phone needed.
+- **dim white** — nobody home, just watching the room
+- a short **red pulse at your live BPM** the instant it locks onto your heartbeat (the "yes,
+  I've got you" cue)
+- **green** — you're up and your vitals are locked
+- **blue** — you're in bed, settling
+- **off** — asleep, because a bedroom should be dark; a faint **amber night-light** kicks in
+  only if you get up mid-session for the inevitable 3 a.m. bathroom trip
+
+Prefer a plain bedside lamp? Tap it into manual (or use the dashboard) and it's just warm light
+on a brightness slider.
+
+### 👆 One-tap control (TTP223 touch)
+One pad, one gesture, everything reachable: each tap steps the lamp
+**Auto → Dim 20% → Med 60% → Max 100% → Off → Auto → …**. "Auto" hands the ring back to the
+status colours above; the middle three are a plain warm lamp. When the sunrise alarm is going
+off, any tap silences it. (Getting this pad to behave took a couple of nights —
+see [Build log](#build-log--things-that-bit-me).)
 
 ### ⏰ Smart-wake sunrise alarm
 Set a wake time and a window (say 30 min). SleepLamp watches for **light sleep** inside
 that window and starts a gradual **sunrise light ramp** to wake you gently at the easiest
 moment — never yanking you out of deep sleep. Get out of bed (or tap the lamp) and it stops.
 
-### 🏠 Matter — works with Apple Home, Google & Alexa
-The lamp is a standard **Matter Color Light**. Scan the pairing **QR code printed to the
-serial monitor** to add it to any Matter smart-home app, then control color/brightness by
-voice or app. State stays in sync both ways — change it by touch or on the dashboard and
-your smart-home app updates too.
+### 🏠 Matter (built, then shelved — being honest)
+The lamp *is* a full **Matter Color Light** under the hood — pairing QR, two-way state sync,
+the lot — but it ships **off** (`ENABLE_MATTER 0`). On real hardware it brought two problems I
+wasn't willing to leave in: a colour-control feedback loop that kept dragging the lamp down to
+1 % brightness ("touch only turns it off" was actually this), and an mDNS clash with
+`sleeplamp.local` that stopped Matter from ever advertising. I fixed the feedback loop; the
+mDNS clash I haven't, so it stays disabled for now. The whole thing is still sitting in
+[`Matter.ino`](firmware/sleeplamp/Matter.ino) if you want to finish it — and turning it off
+handed ~82 KB of heap back to the dashboard, which wasn't the worst trade.
 
 ### 🪐 "Deep-space universe" dashboard
 A single self-contained page served from the ESP32: nebula glow, drifting starfields,
@@ -231,26 +248,30 @@ radar frames — which is why the junk-data problem is gone for good.
 
 ### Wiring
 
-| From | Pin | To |
+| Signal | ESP32-S3 pin | Power |
 |---|:--:|---|
-| C1001 **TX** | **GPIO 18** | ESP32-S3 RX |
-| C1001 **RX** | **GPIO 17** | ESP32-S3 TX |
-| C1001 **VCC / GND** | — | **external 5 V** (not the board's USB 5 V) / common GND |
-| DHT11 **DATA** | **GPIO 4** | (VCC 3V3, GND) |
-| NeoPixel ring **DIN** | **GPIO 5** | 5V + GND from the **external supply** (≈0.7 A @ 12 px) |
-| TTP223 **OUT** | **GPIO 6** | (VCC 3V3, GND) |
+| C1001 **TX** → ESP RX | **GPIO 17** | VCC → **external 5 V** (not USB 5 V), common GND |
+| C1001 **RX** ← ESP TX | **GPIO 18** | — |
+| NeoPixel ring **DIN** | **GPIO 15** | 5 V + GND from the **external supply** (≈0.7 A @ 12 px) |
+| TTP223 touch **OUT** | **GPIO 16** | VCC → **3V3** |
+| DHT11 **DATA** | **GPIO 3** | VCC → **3V3** — *keep the data pull-up; GPIO3 is a strapping pin* |
 
-All pins are `#define`s in [config.h](firmware/sleeplamp/config.h) — change them there if you wire differently.
+These are just `#define`s in [config.h](firmware/sleeplamp/config.h) — mine ended up here because
+of how my PCB routed. Wire it however suits your board and change them there.
+
+> **If the radar never answers** (`init error, retrying` forever): swap **TX ↔ RX**. UART
+> cross-over trips up *everyone*, me included — my board was wired the mirror image of the
+> defaults and the sensor stayed dead silent until I flipped these two lines.
 
 ```mermaid
 flowchart LR
     psu["External 5V PSU"] ==> radar["C1001 radar"]
     psu ==> ring["NeoPixel ring (12)"]
-    radar -- "TX → GPIO18" --> esp["ESP32-S3"]
-    esp -- "GPIO17 → RX" --> radar
-    esp -- "GPIO4" --- dht["DHT11"]
-    esp -- "GPIO5 (DIN)" --> ring
-    esp -- "GPIO6" --- touch["TTP223 touch"]
+    radar -- "TX → GPIO17" --> esp["ESP32-S3"]
+    esp -- "GPIO18 → RX" --> radar
+    esp -- "GPIO3" --- dht["DHT11"]
+    esp -- "GPIO15 (DIN)" --> ring
+    esp -- "GPIO16" --- touch["TTP223 touch"]
     esp -. "common GND" .- psu
 ```
 
@@ -272,8 +293,8 @@ the dashboard or power-cycle the radar's 5 V.
 
 ### 1. Install the toolchain
 - **Arduino IDE 2.x**
-- **esp32 board package 3.1.0+** (Boards Manager → "esp32" by Espressif) — 3.1+ is
-  **required for Matter**. (Set `ENABLE_MATTER 0` in config.h to build on 3.0.x without it.)
+- **esp32 board package 3.1.x or 3.2.x** (Boards Manager → "esp32" by Espressif). Matter ships
+  **off**, so any recent 3.x builds fine — you'd only need 3.1+ specifically if you re-enable it.
 - **Adafruit NeoPixel** library (Library Manager → "Adafruit NeoPixel", **≥ 1.12.3**,
   tested 1.15.5) — drives the ring.
 - **No sensor library to install** — the radar driver is bundled with the sketch as a
@@ -294,9 +315,9 @@ password `sleeplamp123`, at `http://192.168.4.1/wifi`.)*
 | Setting | Value |
 |---|---|
 | Board | **ESP32S3 Dev Module** |
-| Partition Scheme | **Huge APP (3 MB No OTA / 1 MB SPIFFS)** |
-| PSRAM | Disabled (enable **OPI PSRAM** only if Matter runs low on heap) |
-| Erase All Flash Before Sketch Upload | **Enabled for the first Matter flash** (clears stale Matter/WiFi state — note it also wipes saved sleep history) |
+| Flash Size | **16 MB (128 Mb)** |
+| Partition Scheme | **Huge APP (3 MB No OTA / 1 MB SPIFFS)** — the binary is ~1.1 MB, so the default 1 MB scheme won't fit (you'll get *"text section exceeds available space"*) |
+| PSRAM | **Disabled** is fine. The N16R8's 8 MB OPI PSRAM sits idle for now — snore detection is the feature that'll finally earn it a job. |
 
 ### 4. Flash & open
 Open `firmware/sleeplamp/sleeplamp.ino`, upload, then browse to
@@ -383,11 +404,48 @@ SleepLamp_Project/
 
 ---
 
+## Build log — things that bit me
+
+None of this came out clean. A few of the fights, in case you're about to have the same ones:
+
+**The radar played completely dead.** `begin()` looped `init error` forever with wiring that
+"obviously" matched the datasheet. Classic UART cross-over — my board had TX and RX mirrored
+from the defaults, and the sensor stayed dead silent until I swapped the two lines in `config.h`.
+If yours won't answer, try this *first*, not last.
+
+**The lamp turned itself off at 3 a.m.** For two nights the light flicked off on its own. The
+TTP223's output was floating, so electrical noise kept firing phantom "taps." An
+`INPUT_PULLDOWN` plus a 40 ms level-debounce — the pin now has to *hold* a new state before a
+tap counts — and the ghost was gone.
+
+**Only 5 of 12 LEDs lit, and white instead of warm.** Looked like a data-line bug; it was power.
+Twelve WS2812s at full white pull ~0.7 A, and a laptop USB port sags under that, browning out
+both the ring and the radar. Clean external 5 V (never the board's USB rail) fixed the colours
+*and* stopped the random reboots.
+
+**Matter kept dragging the lamp to 1 % brightness.** Every colour change I pushed to the hub
+echoed back as a "command," round-tripped RGB → HSV → RGB, and landed on near-black. That was the
+real reason "touch only turned it off." A self-write guard broke the loop — though an unrelated
+mDNS clash still keeps Matter parked (see above).
+
+**The radar poisoned its own history.** The C1001's built-in staging reports once a night, and
+its corrupt frames wrote nonsense into history — HR of 2 bpm, 56 apnea events a night. So the
+lamp stages sleep itself and only ever writes *validated* data at session end. Junk gone for
+good.
+
+**OneDrive ate my edits.** The sketch lived in a OneDrive folder, which quietly spawned `-Shubh`
+conflict copies mid-build — my changes compiled into a ghost file while the original reverted
+under me. If you value your sanity, keep the source somewhere the cloud can't "help."
+
+---
+
 ## Roadmap
 
 - [x] **NeoPixel ring lamp** (12× WS2812) with adaptive + sunrise lighting.
 - [x] **Touch control** (TTP223).
-- [x] **Matter** color light — pair with Apple Home / Google / Alexa.
+- [x] **Matter** color light — coded and working, but currently shelved over an mDNS clash
+      (see the Matter note in the [feature tour](#feature-tour)).
+- [ ] **Fix that mDNS clash** and switch Matter back on.
 - [ ] **Snore detection** — I²S MEMS mic + a small TensorFlow Lite Micro model
       *(the feature that will finally justify turning on the S3's PSRAM)*.
 - [ ] Ambient light sensor (BH1750) for smarter auto-brightness.
