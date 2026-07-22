@@ -29,7 +29,7 @@
 - [HTTP API reference](#http-api-reference)
 - [Project structure](#project-structure)
 - [Build log](#build-log--things-that-bit-me) — *the war stories*
-- [Roadmap](#roadmap)
+- [Status](#status--v1-complete) — *what's built*
 - [Credits & license](#credits--license)
 
 ---
@@ -317,7 +317,7 @@ password `sleeplamp123`, at `http://192.168.4.1/wifi`.)*
 | Board | **ESP32S3 Dev Module** |
 | Flash Size | **16 MB (128 Mb)** |
 | Partition Scheme | **Huge APP (3 MB No OTA / 1 MB SPIFFS)** — the binary is ~1.1 MB, so the default 1 MB scheme won't fit (you'll get *"text section exceeds available space"*) |
-| PSRAM | **Disabled** is fine. The N16R8's 8 MB OPI PSRAM sits idle for now — snore detection is the feature that'll finally earn it a job. |
+| PSRAM | **Disabled** is fine — the firmware doesn't need it (the N16R8's 8 MB OPI PSRAM is just there for headroom). |
 
 ### 4. Flash & open
 Open `firmware/sleeplamp/sleeplamp.ino`, upload, then browse to
@@ -439,18 +439,20 @@ under me. If you value your sanity, keep the source somewhere the cloud can't "h
 
 ---
 
-## Roadmap
+## Status — v1 complete
 
-- [x] **NeoPixel ring lamp** (12× WS2812) with adaptive + sunrise lighting.
-- [x] **Touch control** (TTP223).
-- [x] **Matter** color light — coded and working, but currently shelved over an mDNS clash
-      (see the Matter note in the [feature tour](#feature-tour)).
-- [ ] **Fix that mDNS clash** and switch Matter back on.
-- [ ] **Snore detection** — I²S MEMS mic + a small TensorFlow Lite Micro model
-      *(the feature that will finally justify turning on the S3's PSRAM)*.
-- [ ] Ambient light sensor (BH1750) for smarter auto-brightness.
-- [ ] Native mobile app + optional cloud sync.
-- [ ] Finished 3D-printed enclosure.
+Not a breadboard prototype any more. The whole thing runs on a **custom PCB** (ESP32-S3 with an
+onboard CH340 USB-C programmer) inside a **3D-printed enclosure** — a finished v1 you can put on
+a nightstand and forget about. Everything here is built and working:
+
+- [x] Contactless sleep staging + live heart rate & breathing (60 GHz C1001 radar)
+- [x] On-device staging engine → night reports, sleep score, saved history
+- [x] "Deep-space" web dashboard — interactive hypnogram with calendar browsing
+- [x] Status-colour NeoPixel ring lamp + smart-wake sunrise alarm
+- [x] One-tap TTP223 control
+- [x] **Custom PCB** — schematic in [`PCB Design/`](PCB%20Design/)
+- [x] **3D-printed enclosure**
+- [x] Matter color light — coded (shelved for now over an mDNS clash; see the [feature tour](#feature-tour))
 
 ---
 
